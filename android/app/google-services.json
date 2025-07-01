@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "518519944522",
+    "project_id": "realtimebus-c61cd",
+    "storage_bucket": "realtimebus-c61cd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:518519944522:android:42a603a44259138210fdb3",
+        "android_client_info": {
+          "package_name": "com.example.bus_tracking"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "518519944522-2ii1koebbm0klaofgul75p534qgqkiqp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.bus_tracking",
+            "certificate_hash": "e36b5936c3fb65275bf85831965ab03de8a73d25"
+          }
+        },
+        {
+          "client_id": "518519944522-7ifsdpvu72m9is0rtigmsu5l83p2ctmp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA1FYb9wD4K4afKU-KJZsrl5tYlhgnx0UY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "518519944522-68pc7g307r3r2ctc4j6mg4g5oh024nv8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
