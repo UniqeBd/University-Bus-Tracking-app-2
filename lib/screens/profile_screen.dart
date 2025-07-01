@@ -166,7 +166,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFa18cd1), Color(0xFFfbc2eb)],
+            colors: [Color(0xFF87D3F3), Color(0xFF000000)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -270,7 +270,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: const Icon(Icons.edit),
                     label: const Text('Edit Profile'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
+                      backgroundColor: Colors.cyan,
                       foregroundColor: Colors.white,
                       minimumSize: const Size(180, 48),
                       shape: RoundedRectangleBorder(
@@ -291,7 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: const Icon(Icons.directions_bus),
                     label: const Text('Track Bus'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purpleAccent,
+                      backgroundColor: Colors.cyan,
                       foregroundColor: Colors.white,
                       minimumSize: const Size(180, 48),
                       shape: RoundedRectangleBorder(
