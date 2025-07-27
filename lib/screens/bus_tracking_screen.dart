@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:math';
+import 'package:flutter/services.dart' show rootBundle;
 
 class BusTrackingScreen extends StatefulWidget {
   const BusTrackingScreen({super.key});
@@ -12,47 +13,78 @@ class BusTrackingScreen extends StatefulWidget {
 }
 
 class _BusTrackingScreenState extends State<BusTrackingScreen> {
-  GoogleMapController? mapController;
-  
+  WebViewController? _webViewController;
+  bool _isMapLoaded = false;
+  bool _showRoute = true;
+  String _distance = '0.00';
+
   // Initial camera position (you can adjust these coordinates)
-  final LatLng _center = const LatLng(44.4056, 8.9463); // Genova, Italy
-  
+  final _center = const {
+    'latitude': 44.4056,
+    'longitude': 8.9463
+  }; // Genova, Italy
+
   // Bus location (example coordinates)
-  final LatLng _busLocation = const LatLng(44.4156, 8.9563); // Near Genova
-  
+  final _busLocation = const {
+    'latitude': 44.4156,
+    'longitude': 8.9563
+  }; // Near Genova
+
   // User's current location
-  LatLng? _userLocation;
+  Map<String, double>? _userLocation;
   bool _isLoadingLocation = false;
-  
-  // Markers for the map
-  Set<Marker> _markers = {};
-  
+
   @override
   void initState() {
     super.initState();
-    _initializeMarkers();
-    _getCurrentLocation();
+    _initializeWebView();
   }
-  
-  void _initializeMarkers() {
-    _markers = {
-      Marker(
-        markerId: const MarkerId('bus'),
-        position: _busLocation,
-        infoWindow: const InfoWindow(
-          title: 'V-Bus-1845',
-          snippet: 'Genova-Milano',
-        ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
-      ),
-    };
+
+  Future<void> _initializeWebView() async {
+    try {
+      debugPrint('Loading map.html from assets...');
+      final String mapHtml = await rootBundle.loadString('assets/map.html');
+      debugPrint('map.html loaded successfully');
+
+      _webViewController = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(Colors.transparent)
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onPageStarted: (String url) {
+              debugPrint('Page started loading: $url');
+            },
+            onPageFinished: (String url) {
+              debugPrint('Page finished loading: $url');
+              setState(() {
+                _isMapLoaded = true;
+              });
+              _updateMapMarkers();
+            },
+            onWebResourceError: (WebResourceError error) {
+              debugPrint('Web resource error: ${error.description}');
+            },
+          ),
+        )
+        ..addJavaScriptChannel(
+          'Flutter',
+          onMessageReceived: (JavaScriptMessage message) {
+            debugPrint('Message from JavaScript: ${message.message}');
+          },
+        )
+        ..loadHtmlString(mapHtml, baseUrl: 'https://unpkg.com');
+
+      debugPrint('WebView controller initialized');
+    } catch (e) {
+      debugPrint('Error initializing WebView: $e');
+    }
   }
-  
+
   Future<void> _getCurrentLocation() async {
     setState(() {
       _isLoadingLocation = true;
     });
-    
+
     try {
       // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -60,7 +92,7 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
         _showLocationError('Location services are disabled.');
         return;
       }
-      
+
       // Check location permissions
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
@@ -70,66 +102,112 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
           return;
         }
       }
-      
+
       if (permission == LocationPermission.deniedForever) {
         _showLocationError('Location permissions are permanently denied.');
         return;
       }
-      
+
       // Get current position
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      
+
       setState(() {
-        _userLocation = LatLng(position.latitude, position.longitude);
-        _markers.add(
-          Marker(
-            markerId: const MarkerId('user'),
-            position: _userLocation!,
-            infoWindow: const InfoWindow(
-              title: 'My Location',
-              snippet: 'Current position',
-            ),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-          ),
-        );
+        _userLocation = {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+        };
         _isLoadingLocation = false;
       });
-      
-      // Animate camera to show both user and bus location
-      if (mapController != null) {
-        mapController!.animateCamera(
-          CameraUpdate.newLatLngBounds(
-            _getBoundsForMarkers(),
-            50.0,
-          ),
-        );
-      }
+
+      // Update markers on the map
+      await _updateMapMarkers();
     } catch (e) {
       _showLocationError('Error getting location: $e');
     }
   }
-  
-  LatLngBounds _getBoundsForMarkers() {
-    double minLat = _userLocation?.latitude ?? _busLocation.latitude;
-    double maxLat = _userLocation?.latitude ?? _busLocation.latitude;
-    double minLng = _userLocation?.longitude ?? _busLocation.longitude;
-    double maxLng = _userLocation?.longitude ?? _busLocation.longitude;
-    
-    if (_userLocation != null) {
-      minLat = min(minLat, _userLocation!.latitude);
-      maxLat = max(maxLat, _userLocation!.latitude);
-      minLng = min(minLng, _userLocation!.longitude);
-      maxLng = max(maxLng, _userLocation!.longitude);
+
+  Future<void> _updateMapMarkers() async {
+    if (_webViewController == null || !_isMapLoaded) {
+      debugPrint('WebView not ready yet');
+      return;
     }
-    
-    return LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
-    );
+
+    try {
+      debugPrint('Updating map markers...');
+
+      // Update bus location
+      await _webViewController!.runJavaScript(
+          'try { updateBusLocation(${_busLocation['longitude']}, ${_busLocation['latitude']}); } catch(e) { console.error("Error updating bus location:", e); }');
+
+      // Update user location if available
+      if (_userLocation != null) {
+        await _webViewController!.runJavaScript(
+            'try { updateUserLocation(${_userLocation!['longitude']}, ${_userLocation!['latitude']}); } catch(e) { console.error("Error updating user location:", e); }');
+
+        // Show route between user and bus if enabled
+        if (_showRoute) {
+          await _webViewController!.runJavaScript(
+              'try { showRoute(${_userLocation!['latitude']}, ${_userLocation!['longitude']}, ${_busLocation['latitude']}, ${_busLocation['longitude']}); } catch(e) { console.error("Error showing route:", e); }');
+        } else {
+          await _webViewController!.runJavaScript(
+              'try { clearRoute(); } catch(e) { console.error("Error clearing route:", e); }');
+        }
+
+        // Update distance
+        final distance = await _getDistance();
+        setState(() {
+          _distance = distance;
+        });
+
+        // Fit bounds to show both markers
+        double minLat =
+            min(_busLocation['latitude']!, _userLocation!['latitude']!);
+        double maxLat =
+            max(_busLocation['latitude']!, _userLocation!['latitude']!);
+        double minLng =
+            min(_busLocation['longitude']!, _userLocation!['longitude']!);
+        double maxLng =
+            max(_busLocation['longitude']!, _userLocation!['longitude']!);
+
+        await _webViewController!.runJavaScript(
+            'try { fitBounds($minLng, $minLat, $maxLng, $maxLat); } catch(e) { console.error("Error fitting bounds:", e); }');
+      }
+
+      debugPrint('Map markers updated successfully');
+    } catch (e) {
+      debugPrint('Error updating markers: $e');
+    }
   }
-  
+
+  Future<void> _clearRoute() async {
+    if (_webViewController == null || !_isMapLoaded) return;
+
+    try {
+      await _webViewController!.runJavaScript(
+          'try { clearRoute(); } catch(e) { console.error("Error clearing route:", e); }');
+      debugPrint('Route cleared');
+    } catch (e) {
+      debugPrint('Error clearing route: $e');
+    }
+  }
+
+  Future<String> _getDistance() async {
+    if (_webViewController == null || !_isMapLoaded || _userLocation == null) {
+      return '0.00';
+    }
+
+    try {
+      final result = await _webViewController!.runJavaScriptReturningResult(
+          'try { calculateDistance(${_userLocation!['latitude']}, ${_userLocation!['longitude']}, ${_busLocation['latitude']}, ${_busLocation['longitude']}); } catch(e) { "0.00"; }');
+      return result.toString();
+    } catch (e) {
+      debugPrint('Error getting distance: $e');
+      return '0.00';
+    }
+  }
+
   void _showLocationError(String message) {
     setState(() {
       _isLoadingLocation = false;
@@ -141,7 +219,7 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
       ),
     );
   }
-  
+
   Future<void> _openDirections() async {
     if (_userLocation == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -152,11 +230,10 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
       );
       return;
     }
-    
+
     final url = Uri.parse(
-      'https://www.google.com/maps/dir/${_userLocation!.latitude},${_userLocation!.longitude}/${_busLocation.latitude},${_busLocation.longitude}'
-    );
-    
+        'https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${_userLocation!['latitude']},${_userLocation!['longitude']};${_busLocation['latitude']},${_busLocation['longitude']}');
+
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
@@ -168,15 +245,11 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
       );
     }
   }
-  
-  void _onMapCreated(GoogleMapController controller) {
-    mapController = controller;
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[850], // Dark theme background
+      backgroundColor: Colors.grey[850],
       appBar: AppBar(
         backgroundColor: Colors.yellow,
         leading: IconButton(
@@ -185,8 +258,7 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
         ),
         title: const Text(
           'SMUCT BUS SERVICE',
-          style: TextStyle(
-              color: Colors.black, fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -202,16 +274,10 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
             flex: 2,
             child: Stack(
               children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: _center,
-                    zoom: 10,
+                if (_webViewController != null)
+                  WebViewWidget(
+                    controller: _webViewController!,
                   ),
-                  onMapCreated: _onMapCreated,
-                  markers: _markers,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: false, // We'll create our own button
-                ),
                 // My Location Button
                 Positioned(
                   top: 16,
@@ -229,6 +295,62 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
                         : const Icon(Icons.my_location, color: Colors.black),
                   ),
                 ),
+                // Route Toggle Button
+                Positioned(
+                  top: 16,
+                  left: 16,
+                  child: FloatingActionButton(
+                    heroTag: "routeToggle",
+                    onPressed: () {
+                      setState(() {
+                        _showRoute = !_showRoute;
+                      });
+                      _updateMapMarkers();
+                    },
+                    backgroundColor: _showRoute ? Colors.blue : Colors.grey,
+                    child: Icon(
+                      _showRoute ? Icons.route : Icons.route_outlined,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                // Distance Display
+                if (_userLocation != null)
+                  Positioned(
+                    bottom: 16,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.straighten,
+                              color: Colors.blue, size: 16),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${_distance} km',
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -263,7 +385,8 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
                             ),
                             Text(
                               'Genova-Milano',
-                              style: TextStyle(color: Colors.white70, fontSize: 16),
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 16),
                             ),
                           ],
                         ),
@@ -272,7 +395,8 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
                       ElevatedButton.icon(
                         onPressed: _openDirections,
                         icon: const Icon(Icons.directions, color: Colors.white),
-                        label: const Text('Directions', style: TextStyle(color: Colors.white)),
+                        label: const Text('Directions',
+                            style: TextStyle(color: Colors.white)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blue,
                           shape: RoundedRectangleBorder(
@@ -300,11 +424,16 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
                     child: SingleChildScrollView(
                       child: Column(
                         children: [
-                          _buildTimelineStop('Genova-Fant D\'italia', 'Starting stop', '16:45', isFirst: true),
+                          _buildTimelineStop(
+                              'Genova-Fant D\'italia', 'Starting stop', '16:45',
+                              isFirst: true),
                           _buildTimelineConnector(),
-                          _buildTimelineStop('2 stops', '', '', isStopPoint: false),
-                           _buildTimelineConnector(),
-                          _buildTimelineStop('Milano-Malpensa', 'Final stop', '19:53', isLast: true),
+                          _buildTimelineStop('2 stops', '', '',
+                              isStopPoint: false),
+                          _buildTimelineConnector(),
+                          _buildTimelineStop(
+                              'Milano-Malpensa', 'Final stop', '19:53',
+                              isLast: true),
                         ],
                       ),
                     ),
@@ -318,7 +447,8 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
     );
   }
 
-  Widget _buildTimelineStop(String title, String subtitle, String time, {bool isFirst = false, bool isLast = false, bool isStopPoint = true}) {
+  Widget _buildTimelineStop(String title, String subtitle, String time,
+      {bool isFirst = false, bool isLast = false, bool isStopPoint = true}) {
     return Row(
       children: [
         Column(
@@ -329,7 +459,8 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: isStopPoint ? Colors.yellow : Colors.transparent,
-                border: Border.all(color: Colors.white, width: isStopPoint ? 2 : 0),
+                border:
+                    Border.all(color: Colors.white, width: isStopPoint ? 2 : 0),
               ),
             ),
           ],
@@ -382,4 +513,4 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
       ],
     );
   }
-} 
+}

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenLayers Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://openlayers.org/en/v8.2.0/css/ol.css" type="text/css">
+    <script src="https://openlayers.org/en/v8.2.0/build/ol.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            width: 100%;
+            background-color: #f0f0f0;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+        }
+        .marker {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script>
+        window.onerror = function(msg, url, line) {
+            console.log('Error: ' + msg + '\nURL: ' + url + '\nLine: ' + line);
+            return false;
+        };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                initMap({ longitude: 8.9463, latitude: 44.4056 });
+            } catch (e) {
+                console.error('Error initializing map:', e);
+            }
+        });
+
+        let map;
+        let busMarker;
+        let userMarker;
+
+        function initMap(center) {
+            if (!ol) {
+                console.error('OpenLayers not loaded');
+                return;
+            }
+
+            try {
+                map = new ol.Map({
+                    target: 'map',
+                    layers: [
+                        new ol.layer.Tile({
+                            source: new ol.source.OSM()
+                        })
+                    ],
+                    view: new ol.View({
+                        center: ol.proj.fromLonLat([center.longitude, center.latitude]),
+                        zoom: 13
+                    })
+                });
+                console.log('Map initialized successfully');
+            } catch (e) {
+                console.error('Error in initMap:', e);
+            }
+        }
+
+        function updateBusLocation(longitude, latitude) {
+            try {
+                const coordinates = ol.proj.fromLonLat([longitude, latitude]);
+                
+                if (!busMarker) {
+                    const markerElement = document.createElement('div');
+                    markerElement.className = 'marker';
+                    markerElement.style.backgroundColor = 'yellow';
+                    markerElement.style.width = '20px';
+                    markerElement.style.height = '20px';
+                    markerElement.style.border = '2px solid black';
+
+                    busMarker = new ol.Overlay({
+                        element: markerElement,
+                        positioning: 'center-center',
+                        stopEvent: false
+                    });
+                    map.addOverlay(busMarker);
+                }
+                
+                busMarker.setPosition(coordinates);
+                console.log('Bus location updated:', longitude, latitude);
+            } catch (e) {
+                console.error('Error in updateBusLocation:', e);
+            }
+        }
+
+        function updateUserLocation(longitude, latitude) {
+            try {
+                const coordinates = ol.proj.fromLonLat([longitude, latitude]);
+                
+                if (!userMarker) {
+                    const markerElement = document.createElement('div');
+                    markerElement.className = 'marker';
+                    markerElement.style.backgroundColor = 'blue';
+                    markerElement.style.width = '20px';
+                    markerElement.style.height = '20px';
+                    markerElement.style.border = '2px solid white';
+
+                    userMarker = new ol.Overlay({
+                        element: markerElement,
+                        positioning: 'center-center',
+                        stopEvent: false
+                    });
+                    map.addOverlay(userMarker);
+                }
+                
+                userMarker.setPosition(coordinates);
+                console.log('User location updated:', longitude, latitude);
+            } catch (e) {
+                console.error('Error in updateUserLocation:', e);
+            }
+        }
+
+        function fitBounds(sw_lon, sw_lat, ne_lon, ne_lat) {
+            try {
+                const extent = ol.proj.transformExtent(
+                    [sw_lon, sw_lat, ne_lon, ne_lat],
+                    'EPSG:4326',
+                    'EPSG:3857'
+                );
+                map.getView().fit(extent, { padding: [50, 50, 50, 50] });
+                console.log('Bounds fitted');
+            } catch (e) {
+                console.error('Error in fitBounds:', e);
+            }
+        }
+    </script>
+</body>
+</html> 
