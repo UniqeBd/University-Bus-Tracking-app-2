@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Leaflet Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            width: 100%;
+            background-color: #f0f0f0;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+        }
+        .marker {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+        }
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 1000;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="info-panel" id="info-panel" style="display: none;">
+        <div><strong>Distance:</strong> <span id="distance">-</span></div>
+        <div><strong>Duration:</strong> <span id="duration">-</span></div>
+    </div>
+    <script>
+        window.onerror = function(msg, url, line) {
+            console.log('Error: ' + msg + '\nURL: ' + url + '\nLine: ' + line);
+            return false;
+        };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                initMap({ longitude: 8.9463, latitude: 44.4056 });
+            } catch (e) {
+                console.error('Error initializing map:', e);
+            }
+        });
+
+        let map;
+        let busMarker;
+        let userMarker;
+        let routingControl;
+        let currentRoute;
+
+        function initMap(center) {
+            if (typeof L === 'undefined') {
+                console.error('Leaflet not loaded');
+                return;
+            }
+
+            try {
+                map = L.map('map').setView([center.latitude, center.longitude], 13);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+                
+                console.log('Map initialized successfully');
+            } catch (e) {
+                console.error('Error in initMap:', e);
+            }
+        }
+
+        function updateBusLocation(longitude, latitude) {
+            try {
+                if (!busMarker) {
+                    const busIcon = L.divIcon({
+                        className: 'marker',
+                        html: '<div style="background-color: yellow; width: 20px; height: 20px; border-radius: 50%; border: 2px solid black;"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    
+                    busMarker = L.marker([latitude, longitude], { icon: busIcon }).addTo(map);
+                } else {
+                    busMarker.setLatLng([latitude, longitude]);
+                }
+                
+                console.log('Bus location updated:', longitude, latitude);
+            } catch (e) {
+                console.error('Error in updateBusLocation:', e);
+            }
+        }
+
+        function updateUserLocation(longitude, latitude) {
+            try {
+                if (!userMarker) {
+                    const userIcon = L.divIcon({
+                        className: 'marker',
+                        html: '<div style="background-color: blue; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    
+                    userMarker = L.marker([latitude, longitude], { icon: userIcon }).addTo(map);
+                } else {
+                    userMarker.setLatLng([latitude, longitude]);
+                }
+                
+                console.log('User location updated:', longitude, latitude);
+            } catch (e) {
+                console.error('Error in updateUserLocation:', e);
+            }
+        }
+
+        function fitBounds(sw_lon, sw_lat, ne_lon, ne_lat) {
+            try {
+                const bounds = L.latLngBounds([sw_lat, sw_lon], [ne_lat, ne_lon]);
+                map.fitBounds(bounds, { padding: [50, 50] });
+                console.log('Bounds fitted');
+            } catch (e) {
+                console.error('Error in fitBounds:', e);
+            }
+        }
+
+        function showRoute(userLat, userLng, busLat, busLng) {
+            try {
+                // Remove existing route
+                if (routingControl) {
+                    map.removeControl(routingControl);
+                }
+
+                // Create new route
+                routingControl = L.Routing.control({
+                    waypoints: [
+                        L.latLng(userLat, userLng),
+                        L.latLng(busLat, busLng)
+                    ],
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    fitSelectedRoutes: false,
+                    lineOptions: {
+                        styles: [{ color: '#007cbf', weight: 4 }]
+                    },
+                    createMarker: function() { return null; } // Don't create default markers
+                }).addTo(map);
+
+                // Listen for route calculation
+                routingControl.on('routesfound', function(e) {
+                    const routes = e.routes;
+                    if (routes && routes.length > 0) {
+                        const route = routes[0];
+                        const distance = (route.summary.totalDistance / 1000).toFixed(2); // Convert to km
+                        const duration = Math.round(route.summary.totalTime / 60); // Convert to minutes
+                        
+                        document.getElementById('distance').textContent = distance + ' km';
+                        document.getElementById('duration').textContent = duration + ' min';
+                        document.getElementById('info-panel').style.display = 'block';
+                        
+                        console.log('Route calculated - Distance:', distance, 'km, Duration:', duration, 'min');
+                    }
+                });
+
+                console.log('Route calculation started');
+            } catch (e) {
+                console.error('Error in showRoute:', e);
+            }
+        }
+
+        function clearRoute() {
+            try {
+                if (routingControl) {
+                    map.removeControl(routingControl);
+                    routingControl = null;
+                }
+                document.getElementById('info-panel').style.display = 'none';
+                console.log('Route cleared');
+            } catch (e) {
+                console.error('Error in clearRoute:', e);
+            }
+        }
+
+        function calculateDistance(lat1, lng1, lat2, lng2) {
+            try {
+                const point1 = L.latLng(lat1, lng1);
+                const point2 = L.latLng(lat2, lng2);
+                const distance = point1.distanceTo(point2) / 1000; // Convert to km
+                return distance.toFixed(2);
+            } catch (e) {
+                console.error('Error calculating distance:', e);
+                return '0.00';
+            }
+        }
+    </script>
+</body>
+</html> 
